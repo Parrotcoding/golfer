@@ -2,8 +2,8 @@
 const canvas = document.getElementById('courseCanvas');
 const ctx = canvas.getContext('2d');
 const clubSelect = document.getElementById('clubSelect');
-const angleInput = document.getElementById('angleInput');
 const swingButton = document.getElementById('swingButton');
+const promptMessage = document.getElementById('promptMessage');
 
 // Set canvas dimensions
 canvas.width = window.innerWidth * 0.9;
@@ -21,15 +21,18 @@ const clubMultipliers = {
   putter: 0.5
 };
 
-let motionData = null;   // To store the latest device motion event
-let swingInProgress = false; // Prevent multiple swings at once
+let motionData = null;      // Latest device motion event data
+let swingInProgress = false; // Prevent overlapping swings
 
-// Draw the course, ball, and hole
+// Variables for drawing the intended angle
+let isDrawing = false;
+let drawnAngle = null;      // Base angle in degrees (set after drawing)
+let lineEnd = null;         // End point of the drawn line
+
+// Draw the course with ball and hole
 function drawCourse() {
-  // Clear the canvas
   ctx.clearRect(0, 0, canvas.width, canvas.height);
-  
-  // Draw a green grass field (background)
+  // Grass field
   ctx.fillStyle = '#4caf50';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
   
@@ -50,7 +53,7 @@ function drawCourse() {
   ctx.closePath();
 }
 
-// Animate the ball's movement from its current position to the target
+// Animate the ball moving to the target position
 function animateBall(targetX, targetY) {
   swingInProgress = true;
   const frames = 60;
@@ -63,6 +66,15 @@ function animateBall(targetX, targetY) {
       ball.x += dx;
       ball.y += dy;
       drawCourse();
+      // If an angle was drawn, re-draw the line
+      if (lineEnd) {
+        ctx.beginPath();
+        ctx.moveTo(ball.x, ball.y);
+        ctx.lineTo(lineEnd.x, lineEnd.y);
+        ctx.strokeStyle = 'red';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+      }
       frame++;
       requestAnimationFrame(animate);
     } else {
@@ -70,46 +82,48 @@ function animateBall(targetX, targetY) {
       ball.y = targetY;
       drawCourse();
       swingInProgress = false;
+      // Reset the drawn angle and prompt for a new shot
+      drawnAngle = null;
+      lineEnd = null;
+      promptMessage.textContent = "Draw the angle from the ball on the course.";
+      swingButton.disabled = true;
     }
   }
   
   animate();
 }
 
-// Calculate and execute the swing based on user input and sensor data (or simulation)
+// Calculate and execute the swing using the drawn angle as the base
 function takeSwing() {
-  if (swingInProgress) return; // Do nothing if a swing is already happening
-  
+  if (swingInProgress) return;
+  if (drawnAngle === null) {
+    alert("Please draw the angle first!");
+    return;
+  }
   const selectedClub = clubSelect.value;
-  const baseAngle = parseFloat(angleInput.value); // Intended angle in degrees
+  const baseAngle = drawnAngle;
   
   // Determine swing strength and deviation.
-  // If motion sensor data is available, use it; otherwise, use a simulated random value.
   let swingStrength = 10; // Default strength
-  let deviation = 0;      // Default deviation (i.e. a perfectly straight swing)
+  let deviation = 0;      // Default deviation (perfectly straight)
   
   if (motionData && motionData.acceleration) {
-    // Use the x-axis acceleration as swing strength (absolute value)
     swingStrength = Math.abs(motionData.acceleration.x) || 10;
-    // Use the y-axis acceleration to simulate a slight deviation from the intended angle
     deviation = motionData.acceleration.y || 0;
   } else {
-    // Fallback simulation: random strength and slight random deviation
-    swingStrength = Math.random() * 15 + 5; // strength between 5 and 20
-    deviation = (Math.random() - 0.5) * 10;   // deviation between -5 and 5 degrees
+    // Simulated swing strength and deviation
+    swingStrength = Math.random() * 15 + 5; // Between 5 and 20
+    deviation = (Math.random() - 0.5) * 10;   // Between -5 and 5 degrees
   }
   
-  // Adjust the swing strength according to the selected club
+  // Adjust swing strength for the selected club
   swingStrength *= clubMultipliers[selectedClub];
   
-  // Final swing angle is the intended angle plus any deviation from an imperfect swing
+  // Final angle incorporates the deviation
   const finalAngle = baseAngle + deviation;
-  
-  // Convert the final angle from degrees to radians
   const rad = finalAngle * Math.PI / 180;
   
-  // Calculate the target ball position based on the swing strength
-  // Here, the swing strength is scaled to provide a visible distance on the canvas.
+  // Calculate the target position based on the swing strength
   const distance = swingStrength * 10;
   const targetX = ball.x + distance * Math.cos(rad);
   const targetY = ball.y - distance * Math.sin(rad);
@@ -117,15 +131,119 @@ function takeSwing() {
   animateBall(targetX, targetY);
 }
 
-// Handle device motion events to capture swing data from a phone
+// Device motion handler for phone swings
 function handleMotion(event) {
   motionData = event;
 }
 
-// Set up event listeners
+// Canvas mouse event listeners for drawing the angle
+canvas.addEventListener('mousedown', function(e) {
+  const rect = canvas.getBoundingClientRect();
+  const x = e.clientX - rect.left;
+  const y = e.clientY - rect.top;
+  // Start drawing if close to the ball
+  const dist = Math.hypot(x - ball.x, y - ball.y);
+  if (dist <= ball.radius + 10) {
+    isDrawing = true;
+  }
+});
+
+canvas.addEventListener('mousemove', function(e) {
+  if (!isDrawing) return;
+  const rect = canvas.getBoundingClientRect();
+  const x = e.clientX - rect.left;
+  const y = e.clientY - rect.top;
+  lineEnd = { x, y };
+  drawCourse();
+  // Draw the intended shot line in red
+  ctx.beginPath();
+  ctx.moveTo(ball.x, ball.y);
+  ctx.lineTo(x, y);
+  ctx.strokeStyle = 'red';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+});
+
+canvas.addEventListener('mouseup', function(e) {
+  if (!isDrawing) return;
+  isDrawing = false;
+  const rect = canvas.getBoundingClientRect();
+  const x = e.clientX - rect.left;
+  const y = e.clientY - rect.top;
+  lineEnd = { x, y };
+  drawCourse();
+  ctx.beginPath();
+  ctx.moveTo(ball.x, ball.y);
+  ctx.lineTo(x, y);
+  ctx.strokeStyle = 'red';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  
+  // Calculate the angle using the drawn line.
+  // dx: horizontal difference; dy: vertical difference (inverted for canvas)
+  const dx = x - ball.x;
+  const dy = ball.y - y; 
+  drawnAngle = Math.atan2(dy, dx) * (180 / Math.PI);
+  
+  // Prompt the user to swing and enable the swing button
+  promptMessage.textContent = "Swing now!";
+  swingButton.disabled = false;
+});
+
+// Touch event support for mobile devices
+canvas.addEventListener('touchstart', function(e) {
+  e.preventDefault();
+  const rect = canvas.getBoundingClientRect();
+  const touch = e.touches[0];
+  const x = touch.clientX - rect.left;
+  const y = touch.clientY - rect.top;
+  const dist = Math.hypot(x - ball.x, y - ball.y);
+  if (dist <= ball.radius + 10) {
+    isDrawing = true;
+  }
+});
+
+canvas.addEventListener('touchmove', function(e) {
+  if (!isDrawing) return;
+  e.preventDefault();
+  const rect = canvas.getBoundingClientRect();
+  const touch = e.touches[0];
+  const x = touch.clientX - rect.left;
+  const y = touch.clientY - rect.top;
+  lineEnd = { x, y };
+  drawCourse();
+  ctx.beginPath();
+  ctx.moveTo(ball.x, ball.y);
+  ctx.lineTo(x, y);
+  ctx.strokeStyle = 'red';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+});
+
+canvas.addEventListener('touchend', function(e) {
+  if (!isDrawing) return;
+  isDrawing = false;
+  if (lineEnd) {
+    drawCourse();
+    ctx.beginPath();
+    ctx.moveTo(ball.x, ball.y);
+    ctx.lineTo(lineEnd.x, lineEnd.y);
+    ctx.strokeStyle = 'red';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    
+    const dx = lineEnd.x - ball.x;
+    const dy = ball.y - lineEnd.y;
+    drawnAngle = Math.atan2(dy, dx) * (180 / Math.PI);
+    
+    promptMessage.textContent = "Swing now!";
+    swingButton.disabled = false;
+  }
+});
+
+// Set up swing button and motion event listeners
 swingButton.addEventListener('click', takeSwing);
 
-// If device motion is supported, request permission on iOS 13+ devices; otherwise, add event listener
 if (window.DeviceMotionEvent) {
   if (typeof DeviceMotionEvent.requestPermission === 'function') {
     DeviceMotionEvent.requestPermission()
