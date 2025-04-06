@@ -9,11 +9,11 @@ const promptMessage = document.getElementById('promptMessage');
 canvas.width = window.innerWidth * 0.9;
 canvas.height = window.innerHeight * 0.6;
 
-// Game objects: the ball and the hole on the course
+// Game objects: ball and hole
 let ball = { x: 50, y: canvas.height - 50, radius: 10 };
 const hole = { x: canvas.width - 100, y: 100, radius: 15 };
 
-// Club multipliers to adjust the distance based on club type
+// Club multipliers to adjust distance based on club type
 const clubMultipliers = {
   driver: 1.2,
   iron: 0.9,
@@ -21,18 +21,19 @@ const clubMultipliers = {
   putter: 0.5
 };
 
-let motionData = null;      // Latest device motion event data
+let motionData = null;       // Latest device motion event data
 let swingInProgress = false; // Prevent overlapping swings
 
-// Variables for drawing the intended angle
+// Variables for drawing the shot angle
 let isDrawing = false;
-let drawnAngle = null;      // Base angle in degrees (set after drawing)
-let lineEnd = null;         // End point of the drawn line
+let drawnAngle = null;   // The calculated angle (in degrees) from the drawn line
+let lineEnd = null;      // The current end point of the drawn line
 
-// Draw the course with ball and hole
+// Draw the course, ball, and hole
 function drawCourse() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
-  // Grass field
+  
+  // Draw grass field
   ctx.fillStyle = '#4caf50';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
   
@@ -51,6 +52,16 @@ function drawCourse() {
   ctx.strokeStyle = 'black';
   ctx.stroke();
   ctx.closePath();
+  
+  // If an angle has been drawn, show the red line
+  if (lineEnd) {
+    ctx.beginPath();
+    ctx.moveTo(ball.x, ball.y);
+    ctx.lineTo(lineEnd.x, lineEnd.y);
+    ctx.strokeStyle = 'red';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+  }
 }
 
 // Animate the ball moving to the target position
@@ -66,15 +77,6 @@ function animateBall(targetX, targetY) {
       ball.x += dx;
       ball.y += dy;
       drawCourse();
-      // If an angle was drawn, re-draw the line
-      if (lineEnd) {
-        ctx.beginPath();
-        ctx.moveTo(ball.x, ball.y);
-        ctx.lineTo(lineEnd.x, lineEnd.y);
-        ctx.strokeStyle = 'red';
-        ctx.lineWidth = 2;
-        ctx.stroke();
-      }
       frame++;
       requestAnimationFrame(animate);
     } else {
@@ -82,24 +84,24 @@ function animateBall(targetX, targetY) {
       ball.y = targetY;
       drawCourse();
       swingInProgress = false;
-      // Reset the drawn angle and prompt for a new shot
+      // Reset for the next shot
       drawnAngle = null;
       lineEnd = null;
-      promptMessage.textContent = "Draw the angle from the ball on the course.";
+      promptMessage.textContent = "Press near the ball and drag to draw your shot direction.";
       swingButton.disabled = true;
     }
   }
-  
   animate();
 }
 
-// Calculate and execute the swing using the drawn angle as the base
+// Calculate and execute the swing using the drawn angle
 function takeSwing() {
   if (swingInProgress) return;
   if (drawnAngle === null) {
     alert("Please draw the angle first!");
     return;
   }
+  
   const selectedClub = clubSelect.value;
   const baseAngle = drawnAngle;
   
@@ -111,7 +113,7 @@ function takeSwing() {
     swingStrength = Math.abs(motionData.acceleration.x) || 10;
     deviation = motionData.acceleration.y || 0;
   } else {
-    // Simulated swing strength and deviation
+    // Simulate swing strength and deviation
     swingStrength = Math.random() * 15 + 5; // Between 5 and 20
     deviation = (Math.random() - 0.5) * 10;   // Between -5 and 5 degrees
   }
@@ -119,11 +121,11 @@ function takeSwing() {
   // Adjust swing strength for the selected club
   swingStrength *= clubMultipliers[selectedClub];
   
-  // Final angle incorporates the deviation
+  // Final angle includes any deviation
   const finalAngle = baseAngle + deviation;
   const rad = finalAngle * Math.PI / 180;
   
-  // Calculate the target position based on the swing strength
+  // Calculate the target position based on swing strength
   const distance = swingStrength * 10;
   const targetX = ball.x + distance * Math.cos(rad);
   const targetY = ball.y - distance * Math.sin(rad);
@@ -136,112 +138,55 @@ function handleMotion(event) {
   motionData = event;
 }
 
-// Canvas mouse event listeners for drawing the angle
-canvas.addEventListener('mousedown', function(e) {
+// Utility: get pointer coordinates relative to the canvas
+function getPointerPosition(e) {
   const rect = canvas.getBoundingClientRect();
-  const x = e.clientX - rect.left;
-  const y = e.clientY - rect.top;
-  // Start drawing if close to the ball
-  const dist = Math.hypot(x - ball.x, y - ball.y);
-  if (dist <= ball.radius + 10) {
+  return {
+    x: e.clientX - rect.left,
+    y: e.clientY - rect.top
+  };
+}
+
+// Pointer event handlers for drawing the shot angle
+function startDrawing(e) {
+  const pos = getPointerPosition(e);
+  // Start drawing only if the pointer is near the ball (within ball radius + 20 pixels)
+  const dist = Math.hypot(pos.x - ball.x, pos.y - ball.y);
+  if (dist <= ball.radius + 20) {
     isDrawing = true;
   }
-});
+}
 
-canvas.addEventListener('mousemove', function(e) {
+function duringDrawing(e) {
   if (!isDrawing) return;
-  const rect = canvas.getBoundingClientRect();
-  const x = e.clientX - rect.left;
-  const y = e.clientY - rect.top;
-  lineEnd = { x, y };
+  const pos = getPointerPosition(e);
+  lineEnd = pos;
   drawCourse();
-  // Draw the intended shot line in red
-  ctx.beginPath();
-  ctx.moveTo(ball.x, ball.y);
-  ctx.lineTo(x, y);
-  ctx.strokeStyle = 'red';
-  ctx.lineWidth = 2;
-  ctx.stroke();
-});
+}
 
-canvas.addEventListener('mouseup', function(e) {
+function endDrawing(e) {
   if (!isDrawing) return;
   isDrawing = false;
-  const rect = canvas.getBoundingClientRect();
-  const x = e.clientX - rect.left;
-  const y = e.clientY - rect.top;
-  lineEnd = { x, y };
+  const pos = getPointerPosition(e);
+  lineEnd = pos;
   drawCourse();
-  ctx.beginPath();
-  ctx.moveTo(ball.x, ball.y);
-  ctx.lineTo(x, y);
-  ctx.strokeStyle = 'red';
-  ctx.lineWidth = 2;
-  ctx.stroke();
   
-  // Calculate the angle using the drawn line.
-  // dx: horizontal difference; dy: vertical difference (inverted for canvas)
-  const dx = x - ball.x;
-  const dy = ball.y - y; 
+  // Calculate the drawn angle using the line from the ball to the pointer
+  const dx = pos.x - ball.x;
+  const dy = ball.y - pos.y; // Invert dy because canvas y-axis increases downward
   drawnAngle = Math.atan2(dy, dx) * (180 / Math.PI);
   
-  // Prompt the user to swing and enable the swing button
   promptMessage.textContent = "Swing now!";
   swingButton.disabled = false;
-});
+}
 
-// Touch event support for mobile devices
-canvas.addEventListener('touchstart', function(e) {
-  e.preventDefault();
-  const rect = canvas.getBoundingClientRect();
-  const touch = e.touches[0];
-  const x = touch.clientX - rect.left;
-  const y = touch.clientY - rect.top;
-  const dist = Math.hypot(x - ball.x, y - ball.y);
-  if (dist <= ball.radius + 10) {
-    isDrawing = true;
-  }
-});
+// Set up pointer event listeners on the canvas
+canvas.addEventListener('pointerdown', startDrawing);
+canvas.addEventListener('pointermove', duringDrawing);
+canvas.addEventListener('pointerup', endDrawing);
+canvas.addEventListener('pointercancel', endDrawing);
 
-canvas.addEventListener('touchmove', function(e) {
-  if (!isDrawing) return;
-  e.preventDefault();
-  const rect = canvas.getBoundingClientRect();
-  const touch = e.touches[0];
-  const x = touch.clientX - rect.left;
-  const y = touch.clientY - rect.top;
-  lineEnd = { x, y };
-  drawCourse();
-  ctx.beginPath();
-  ctx.moveTo(ball.x, ball.y);
-  ctx.lineTo(x, y);
-  ctx.strokeStyle = 'red';
-  ctx.lineWidth = 2;
-  ctx.stroke();
-});
-
-canvas.addEventListener('touchend', function(e) {
-  if (!isDrawing) return;
-  isDrawing = false;
-  if (lineEnd) {
-    drawCourse();
-    ctx.beginPath();
-    ctx.moveTo(ball.x, ball.y);
-    ctx.lineTo(lineEnd.x, lineEnd.y);
-    ctx.strokeStyle = 'red';
-    ctx.lineWidth = 2;
-    ctx.stroke();
-    
-    const dx = lineEnd.x - ball.x;
-    const dy = ball.y - lineEnd.y;
-    drawnAngle = Math.atan2(dy, dx) * (180 / Math.PI);
-    
-    promptMessage.textContent = "Swing now!";
-    swingButton.disabled = false;
-  }
-});
-
-// Set up swing button and motion event listeners
+// Set up the swing button and device motion event
 swingButton.addEventListener('click', takeSwing);
 
 if (window.DeviceMotionEvent) {
@@ -258,5 +203,5 @@ if (window.DeviceMotionEvent) {
   }
 }
 
-// Initial drawing of the course
+// Draw the initial course
 drawCourse();
