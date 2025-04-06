@@ -16,8 +16,8 @@ h1 {
 
 .controls label,
 .controls select,
-.controls input,
-.controls button {
+.controls button,
+.controls p {
   margin: 5px;
   font-size: 1rem;
 }
