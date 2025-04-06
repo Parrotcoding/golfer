@@ -13,7 +13,7 @@ canvas.height = window.innerHeight * 0.6;
 let ball = { x: 50, y: canvas.height - 50, radius: 10 };
 const hole = { x: canvas.width - 100, y: 100, radius: 15 };
 
-// Club multipliers to adjust distance based on club type
+// Club multipliers for distance adjustment
 const clubMultipliers = {
   driver: 1.2,
   iron: 0.9,
@@ -26,8 +26,8 @@ let swingInProgress = false; // Prevent overlapping swings
 
 // Variables for drawing the shot angle
 let isDrawing = false;
-let drawnAngle = null;   // The calculated angle (in degrees) from the drawn line
-let lineEnd = null;      // The current end point of the drawn line
+let drawnAngle = null;   // Calculated angle (in degrees) from the drawn line
+let lineEnd = null;      // Current endpoint of the drawn line
 
 // Draw the course, ball, and hole
 function drawCourse() {
@@ -37,14 +37,14 @@ function drawCourse() {
   ctx.fillStyle = '#4caf50';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
   
-  // Draw the hole as a black circle
+  // Draw the hole
   ctx.beginPath();
   ctx.arc(hole.x, hole.y, hole.radius, 0, Math.PI * 2);
   ctx.fillStyle = 'black';
   ctx.fill();
   ctx.closePath();
   
-  // Draw the ball as a white circle with a black border
+  // Draw the ball
   ctx.beginPath();
   ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI * 2);
   ctx.fillStyle = 'white';
@@ -53,7 +53,7 @@ function drawCourse() {
   ctx.stroke();
   ctx.closePath();
   
-  // If an angle has been drawn, show the red line
+  // Draw the red line if one has been drawn
   if (lineEnd) {
     ctx.beginPath();
     ctx.moveTo(ball.x, ball.y);
@@ -64,7 +64,7 @@ function drawCourse() {
   }
 }
 
-// Animate the ball moving to the target position
+// Animate the ball moving toward the target
 function animateBall(targetX, targetY) {
   swingInProgress = true;
   const frames = 60;
@@ -84,7 +84,7 @@ function animateBall(targetX, targetY) {
       ball.y = targetY;
       drawCourse();
       swingInProgress = false;
-      // Reset for the next shot
+      // Reset drawing for the next shot
       drawnAngle = null;
       lineEnd = null;
       promptMessage.textContent = "Press near the ball and drag to draw your shot direction.";
@@ -106,26 +106,22 @@ function takeSwing() {
   const baseAngle = drawnAngle;
   
   // Determine swing strength and deviation.
-  let swingStrength = 10; // Default strength
-  let deviation = 0;      // Default deviation (perfectly straight)
+  let swingStrength = 10;
+  let deviation = 0;
   
   if (motionData && motionData.acceleration) {
     swingStrength = Math.abs(motionData.acceleration.x) || 10;
     deviation = motionData.acceleration.y || 0;
   } else {
-    // Simulate swing strength and deviation
-    swingStrength = Math.random() * 15 + 5; // Between 5 and 20
-    deviation = (Math.random() - 0.5) * 10;   // Between -5 and 5 degrees
+    swingStrength = Math.random() * 15 + 5; // Simulated swing strength between 5 and 20
+    deviation = (Math.random() - 0.5) * 10;   // Simulated deviation between -5 and 5 degrees
   }
   
-  // Adjust swing strength for the selected club
   swingStrength *= clubMultipliers[selectedClub];
   
-  // Final angle includes any deviation
+  // Final shot angle includes deviation
   const finalAngle = baseAngle + deviation;
   const rad = finalAngle * Math.PI / 180;
-  
-  // Calculate the target position based on swing strength
   const distance = swingStrength * 10;
   const targetX = ball.x + distance * Math.cos(rad);
   const targetY = ball.y - distance * Math.sin(rad);
@@ -133,27 +129,26 @@ function takeSwing() {
   animateBall(targetX, targetY);
 }
 
-// Device motion handler for phone swings
+// Device motion handler
 function handleMotion(event) {
   motionData = event;
 }
 
-// Utility: get pointer coordinates relative to the canvas
+// Utility to get pointer coordinates relative to the canvas
 function getPointerPosition(e) {
   const rect = canvas.getBoundingClientRect();
-  return {
-    x: e.clientX - rect.left,
-    y: e.clientY - rect.top
-  };
+  return { x: e.clientX - rect.left, y: e.clientY - rect.top };
 }
 
 // Pointer event handlers for drawing the shot angle
 function startDrawing(e) {
   const pos = getPointerPosition(e);
-  // Start drawing only if the pointer is near the ball (within ball radius + 20 pixels)
   const dist = Math.hypot(pos.x - ball.x, pos.y - ball.y);
+  // Only start drawing if within ball radius + 20 pixels
   if (dist <= ball.radius + 20) {
     isDrawing = true;
+    console.log("Drawing started:", pos);
+    canvas.setPointerCapture(e.pointerId);
   }
 }
 
@@ -171,16 +166,18 @@ function endDrawing(e) {
   lineEnd = pos;
   drawCourse();
   
-  // Calculate the drawn angle using the line from the ball to the pointer
+  // Calculate angle from the ball to the drawn point (adjusting for canvas y-axis)
   const dx = pos.x - ball.x;
-  const dy = ball.y - pos.y; // Invert dy because canvas y-axis increases downward
+  const dy = ball.y - pos.y;
   drawnAngle = Math.atan2(dy, dx) * (180 / Math.PI);
+  console.log("Angle drawn:", drawnAngle);
   
   promptMessage.textContent = "Swing now!";
   swingButton.disabled = false;
+  canvas.releasePointerCapture(e.pointerId);
 }
 
-// Set up pointer event listeners on the canvas
+// Set up pointer event listeners
 canvas.addEventListener('pointerdown', startDrawing);
 canvas.addEventListener('pointermove', duringDrawing);
 canvas.addEventListener('pointerup', endDrawing);
@@ -191,13 +188,11 @@ swingButton.addEventListener('click', takeSwing);
 
 if (window.DeviceMotionEvent) {
   if (typeof DeviceMotionEvent.requestPermission === 'function') {
-    DeviceMotionEvent.requestPermission()
-      .then(permissionState => {
-        if (permissionState === 'granted') {
-          window.addEventListener('devicemotion', handleMotion);
-        }
-      })
-      .catch(console.error);
+    DeviceMotionEvent.requestPermission().then(permissionState => {
+      if (permissionState === 'granted') {
+        window.addEventListener('devicemotion', handleMotion);
+      }
+    }).catch(console.error);
   } else {
     window.addEventListener('devicemotion', handleMotion);
   }
